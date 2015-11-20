@@ -30,7 +30,7 @@ export default Ember.Mixin.create({
 
       model(params) {
         return Ember.RSVP.hash({
-          postAuthor: this.prefetched(this.routeName),
+          postAuthor: this.prefetched(),
           comments: this.store.findAll('comment')
         });
       }
@@ -38,18 +38,53 @@ export default Ember.Mixin.create({
     ```
 
     @method prefetched
-    @param {String} name the name of the route
-    @return {Promise} a promise that resolves with the prefetched data
+    @param {String} [name] - The name of the route. Defaults to the current route if no name is given.
+    @return {Promise} A promise that resolves with the prefetched data.
     @public
   */
-  // prefetched(name) {
-  //   var route = this.container.lookup(`route:${name}`);
-  //   return Ember.RSVP.Promise.resolve(route && route.asyncData);
-  // },
+  initPrefetched: Ember.on('init', function() {
+    const self = this;
 
+    Object.defineProperty(self, 'prefetched', {
+      get() {
+        function prefetched(name) {
+          if (arguments.length < 1) {
+            name = self.routeName;
+          }
+          const route = self.container.lookup(`route:${name}`);
+          return Ember.RSVP.Promise.resolve(route && route._prefetched);
+        }
+
+        // For prefetched-as-property backward compatibility
+        const _prefetched = this._prefetched;
+        for (let key in _prefetched) {
+          if (key !== 'constructor') {
+            Object.defineProperty(prefetched, key, {
+              get() {
+                let value = _prefetched[key];
+
+                if (typeof value === 'function') {
+                  return function() {
+                    return value.apply(_prefetched, arguments);
+                  };
+                } else {
+                  return value;
+                }
+              },
+              set(value) {
+                _prefetched[key] = value;
+              },
+            });
+          }
+        }
+
+        return prefetched;
+      }
+    });
+  }),
 
   model(params, transition) {
-    const prefetched = this.prefetched;
+    const prefetched = this._prefetched;
 
     if (prefetched && !prefetched._prefetchReturnedUndefined) {
       return prefetched;
